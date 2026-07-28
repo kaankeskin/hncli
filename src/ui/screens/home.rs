@@ -51,6 +51,13 @@ impl HomeScreen {
 impl Screen for HomeScreen {
     fn before_mount(&mut self, state: &mut AppState, _config: &AppConfiguration) {
         state.set_main_stories_section(self.section);
+
+        // Restore the default focus to the stories list, matching the app's initial state.
+        // Otherwise, `latest_interacted_with_component` may still point to a component from
+        // a previously viewed and now unmounted screen (the item comments panel),
+        // which would prevent `StoriesPanel` from reacting to `SelectItem` until the user
+        // first navigates (up/down) within the list.
+        state.set_latest_interacted_with_component(Some(STORIES_PANEL_ID));
     }
 
     fn handle_inputs(

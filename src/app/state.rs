@@ -83,6 +83,11 @@ impl AppState {
         self.latest_interacted_with_component.as_ref()
     }
 
+    /// Set the latest component interacted with.
+    pub fn set_latest_interacted_with_component(&mut self, id: Option<UiComponentId>) {
+        self.latest_interacted_with_component = id;
+    }
+
     /// Get the are the main stories loading boolean.
     pub fn get_main_stories_loading(&self) -> bool {
         self.main_stories_loading

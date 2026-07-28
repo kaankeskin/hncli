@@ -9,7 +9,9 @@ use unicode_width::UnicodeWidthStr;
 
 use crate::{
     api::types::HnItemIdScalar,
-    ui::{displayable_item::DisplayableHackerNewsItemComments, theme::UiTheme},
+    ui::{
+        displayable_item::DisplayableHackerNewsItemComments, theme::UiTheme, utils::loader::Loader,
+    },
 };
 
 use super::corpus_widget::CommentWidget;
@@ -172,6 +174,8 @@ pub struct ItemCommentsWidget<'a> {
     state: &'a ItemCommentsWidgetState,
     /// Comments of the top-level parent item.
     comments: &'a DisplayableHackerNewsItemComments,
+    /// Used for the animated loading prompt, when the focused comment is not yet cached.
+    loader: &'a Loader,
 }
 
 impl<'a> ItemCommentsWidget<'a> {
@@ -179,11 +183,13 @@ impl<'a> ItemCommentsWidget<'a> {
         theme: &'a UiTheme,
         state: &'a ItemCommentsWidgetState,
         comments: &'a DisplayableHackerNewsItemComments,
+        loader: &'a Loader,
     ) -> Self {
         Self {
             theme,
             state,
             comments,
+            loader,
         }
     }
 }
@@ -205,7 +211,7 @@ impl<'a> Widget for ItemCommentsWidget<'a> {
         let focused_comment = if let Some(comment) = self.comments.get(&focused_comment_id) {
             comment
         } else {
-            let prompt = "Loading the comment...";
+            let prompt = self.loader.text();
             buf.set_string(
                 (area.right() - area.left()) / 2 - prompt.len() as u16 / 2,
                 (area.bottom() - area.top()) / 2,

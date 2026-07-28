@@ -108,8 +108,12 @@ impl ItemCommentsCommon {
         }
 
         // Widget rendering
-        let widget =
-            ItemCommentsWidget::with_comments(theme, &self.widget_state, viewed_item_comments);
+        let widget = ItemCommentsWidget::with_comments(
+            theme,
+            &self.widget_state,
+            viewed_item_comments,
+            &self.loader,
+        );
         f.render_widget(widget, inside);
 
         Ok(())

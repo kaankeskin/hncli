@@ -132,7 +132,13 @@ impl ItemCommentsWidgetState {
         }
 
         match self.focused_comment {
-            Some((_, comment_id)) if comments.contains_key(&comment_id) => {
+            // `comment_id` must be a sibling at the *current* nesting level, not merely
+            // present anywhere in the global comments cache (which holds every level at once).
+            // Otherwise a stale focus carried over from a previous nesting level (this state is
+            // reused across all nested comment levels) would be kept instead of resetting.
+            Some((_, comment_id))
+                if comments.contains_key(&comment_id) && parent_item_kids.contains(&comment_id) =>
+            {
                 self.focused_same_level_comments_count = parent_item_kids.len();
             }
             _ => {

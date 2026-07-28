@@ -186,6 +186,15 @@ impl UiComponent for ItemTopLevelComments {
         self.common.loading = false;
         self.common.ticks_since_last_update = 0;
 
+        // Restore the previously viewed comment, if applicable
+        if let Some(restored_comment_id) = ctx.get_state().get_previously_viewed_comment_id() {
+            self.common.widget_state.restore_focused_comment_id(
+                restored_comment_id,
+                &Self::get_parent_item_kids(ctx.get_state())?,
+            );
+            ctx.get_state_mut().set_previously_viewed_comment_id(None);
+        }
+
         Ok(())
     }
 

@@ -39,6 +39,21 @@ impl NestedCommentsScreen {
 
 impl Screen for NestedCommentsScreen {
     fn before_mount(&mut self, state: &mut AppState, _config: &AppConfiguration) {
+        // When returning here from a deeper nesting level, the chain already
+        // ends with this level's (parent, focused child) pair, restored by
+        // `pop_currently_viewed_item_comments_chain`.
+        // Pushing again here would duplicate the parent ID and reset the
+        // focused child to the first kid, discarding the just-restored focus.
+        let chain = state.get_currently_viewed_item_comments_chain();
+        if chain
+            .len()
+            .checked_sub(2)
+            .and_then(|parent_index| chain.get(parent_index))
+            .is_some_and(|id| *id == self.parent_comment.id)
+        {
+            return;
+        }
+
         state.push_currently_viewed_item_comments_chain(self.parent_comment.id);
         state.push_currently_viewed_item_comments_chain(
             *Self::get_parent_comment_kids(&self.parent_comment)

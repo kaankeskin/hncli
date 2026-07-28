@@ -59,8 +59,16 @@ impl UiComponent for CommentItemNestedComments {
             self.was_fetching
         };
 
+        // the spawned fetch in `update` can complete within the same tick it was started
+        // (e.g. when the sub-comments are already cached), so the `fetching` flag may never be
+        // observed as `true` here. Checking directly for a ready result avoids relying on
+        // catching that transition and getting stuck showing the loading state until the next
+        // periodic refresh.
+        let has_fetched_comments_ready = self.common.fetched_comments.lock().await.is_some();
+
         let mut should_update = self.common.ticks_since_last_update >= MEAN_TICKS_BETWEEN_UPDATES
-            || Self::get_parent_comment_id(ctx.get_state()) != self.parent_comment_id;
+            || Self::get_parent_comment_id(ctx.get_state()) != self.parent_comment_id
+            || has_fetched_comments_ready;
         self.common.loader.update();
 
         if self.was_fetching && !*self.common.fetching.lock().await {

@@ -10,6 +10,11 @@ use super::types::{HnDead, HnDeleted, HnItem, HnItemIdScalar, HnUser};
 
 const HACKER_NEWS_API_BASE_URL: &str = "https://hacker-news.firebaseio.com/v0";
 
+/// Maximum number of attempts for a single `get_item` fetch, before giving up.
+const GET_ITEM_MAX_ATTEMPTS: u8 = 3;
+/// Base delay between `get_item` retry attempts (multiplied by the attempt count).
+const GET_ITEM_RETRY_DELAY: Duration = Duration::from_millis(250);
+
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum HnStoriesSorting {
     New,
@@ -217,7 +222,26 @@ impl ClassicHnClient {
     }
 
     /// Try to fetch the `HnItem` by its given ID.
+    ///
+    /// Retries on failure: with potentially hundreds of these fetched concurrently
+    /// (see `get_items`) for a single comments thread, a single transient timeout or
+    /// network hiccup should not permanently drop that item from the thread (it would
+    /// otherwise silently never be fetched again for a long while, see `get_items`).
     pub async fn get_item(&self, id: HnItemIdScalar) -> Result<HnItem> {
+        let mut last_error = None;
+        for attempt in 0..GET_ITEM_MAX_ATTEMPTS {
+            if attempt > 0 {
+                tokio::time::sleep(GET_ITEM_RETRY_DELAY * attempt as u32).await;
+            }
+            match self.get_item_once(id).await {
+                Ok(item) => return Ok(item),
+                Err(err) => last_error = Some(err),
+            }
+        }
+        Err(last_error.expect("get_item: at least one attempt was made"))
+    }
+
+    async fn get_item_once(&self, id: HnItemIdScalar) -> Result<HnItem> {
         self.client
             .get(format!("{}/item/{}.json", self.base_url, id))
             .send()
@@ -261,7 +285,7 @@ impl ClassicHnClient {
     }
 
     /// Try to fetch the ID of the latest `HnItem` inserted into the Firebase store.
-    pub async fn get_max_item_id(&self) -> Result<HnItemIdScalar> {
+    pub async fn _get_max_item_id(&self) -> Result<HnItemIdScalar> {
         self.client
             .get(format!("{}/maxitem.json", self.base_url))
             .send()

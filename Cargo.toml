@@ -16,11 +16,11 @@ lto = true      # enable Link Time Optimization
 
 [dependencies]
 async-recursion = "1.1.1"
-async-trait = "0.1.91"
+async-trait = "0.1.92"
 chrono = { version = "0.4.45", features = ["serde"] }
 crossterm = "0.29.0"
 directories = "6.0.0"
-futures = "0.3.33"
+futures = "0.3.34"
 html2text = "0.17.1"
 log = "0.4.33"
 num-traits = "0.2.19"
@@ -29,9 +29,9 @@ reqwest = { version = "0.13.4", features = ["json"] }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"
 simplelog = "0.12.2"
-thiserror = "2.0.19"
+thiserror = "2.0.20"
 tokio = { version = "1.53.1", features = ["full"] }
 toml = { version = "1.1.4", features = ["serde"] }
 unicode-width = "0.2.2"
 url = "2.5.8"
-webbrowser = "1.2.2"
+webbrowser = "1.2.4"

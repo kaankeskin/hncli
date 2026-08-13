@@ -16,7 +16,7 @@ pub const HNCLI_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 pub const ENABLE_GLOBAL_SUB_SCREEN_QUIT_SHORTCUT_DEFAULT: bool = true;
 pub const DISPLAY_COMMENTS_PANEL_BY_DEFAULT_DEFAULT: bool = false;
-pub const DISPLAY_MAIN_ITEMS_LIST_ITEM_META: bool = false;
+pub const DISPLAY_MAIN_ITEMS_LIST_ITEM_META: bool = true;
 pub const SHOW_CONTEXTUAL_HELP_DEFAULT: bool = true;
 
 /// Persisted, global application configuration.

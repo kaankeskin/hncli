@@ -245,12 +245,15 @@ impl UiComponent for StoriesPanel {
                 if !display_story_meta || x >= rect.width {
                     return;
                 }
-                let meta = format!(
-                    "{}, {} score, {} comments",
+                let meta_posted_since = format!(
+                    "{}",
                     item.posted_since,
-                    item.score,
-                    item.kids.as_ref().map_or(0, |kids| kids.len()),
                 );
+                let meta = if matches!(ctx.get_state().get_main_stories_section(), HnStoriesSections::Jobs) {
+                    meta_posted_since
+                } else {
+                    format!("{meta_posted_since}, {} score, {} comments", item.score, item.kids.as_ref().map_or(0, |kids| kids.len()))
+                };
                 let meta_width = meta.width();
                 buf.set_stringn(
                     rect.x + rect.width - (meta_width as u16) - 5,

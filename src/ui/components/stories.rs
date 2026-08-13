@@ -224,7 +224,8 @@ impl UiComponent for StoriesPanel {
             .style(Style::default().fg(theme.get_block_color()))
             .borders(Borders::ALL)
             .border_type(BorderType::Rounded)
-            .title(block_title);
+            .title(block_title)
+            .title_style(Style::default().fg(theme.get_main_color()));
 
         // Custom List
         let display_story_meta = ctx.get_config().get_display_main_items_list_item_meta();

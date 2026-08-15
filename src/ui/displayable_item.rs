@@ -54,6 +54,8 @@ pub struct DisplayableHackerNewsItem {
     pub url_hostname: Option<String>,
     /// IDs of the comments on the item, if any, in ranked display order.
     pub kids: Option<Vec<HnItemIdScalar>>,
+    /// Total number of comments on the item (including nested replies).
+    pub descendants: u32,
     /// For comments, the ID of the parent item.
     pub parent: Option<HnItemIdScalar>,
     /// Is the item an item comment?
@@ -135,6 +137,7 @@ impl TryFrom<HnItem> for DisplayableHackerNewsItem {
                             .to_owned()
                     }),
                     kids: story.kids,
+                    descendants: story.descendants,
                     parent: None,
                     is_comment: false,
                     is_job: false,
@@ -156,6 +159,7 @@ impl TryFrom<HnItem> for DisplayableHackerNewsItem {
                     )),
                     url_hostname: Some("https://hacker-news.firebaseio.com".into()),
                     kids: comment.kids,
+                    descendants: 0,
                     parent: Some(comment.parent),
                     is_comment: true,
                     is_job: false,
@@ -181,6 +185,7 @@ impl TryFrom<HnItem> for DisplayableHackerNewsItem {
                             .to_owned()
                     }),
                     kids: None,
+                    descendants: 0,
                     parent: None,
                     is_comment: false,
                     is_job: true,
@@ -202,6 +207,7 @@ impl TryFrom<HnItem> for DisplayableHackerNewsItem {
                     )),
                     url_hostname: Some("https://hacker-news.firebaseio.com".into()),
                     kids: poll.kids,
+                    descendants: poll.descendants,
                     parent: None,
                     is_comment: false,
                     is_job: false,

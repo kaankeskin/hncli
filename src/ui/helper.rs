@@ -66,6 +66,7 @@ impl ContextualHelper {
             AppRoute::SearchHelp => self.render_search_page_help(f, inside),
             // AppRoute::Search => self.render_search_page_help(f, inside),
             AppRoute::Settings => self.render_settings_page_help(f, inside),
+            AppRoute::Resume => self.render_resume_page_help(f, inside),
             AppRoute::Help => self.render_help_page_help(f, inside),
         }
     }
@@ -181,6 +182,14 @@ impl ContextualHelper {
         let widgets = vec![
             HelpWidget::Text("⬆️  / i or ⬇️  / k to navigate".into()),
             HelpWidget::KeyReminder('✅', "toggle setting".into(), Key::Tab),
+            HelpWidget::KeyReminder('⬅', "go back".into(), Key::Escape),
+        ];
+        Self::render_widgets(f, inside, &widgets);
+    }
+
+    fn render_resume_page_help(&self, f: &mut RenderFrame, inside: Rect) {
+        let widgets = vec![
+            HelpWidget::Text("⬆️  / i or ⬇️  / k to navigate".into()),
             HelpWidget::KeyReminder('⬅', "go back".into(), Key::Escape),
         ];
         Self::render_widgets(f, inside, &widgets);

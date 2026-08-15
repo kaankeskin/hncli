@@ -1,7 +1,7 @@
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 
 use crate::{
-    app::{history::AppHistory, state::AppState},
+    app::state::AppState,
     ui::{
         components::{
             search::{
@@ -45,7 +45,6 @@ impl Screen for SearchScreen {
         inputs: &InputsController,
         router: &mut AppRouter,
         state: &mut AppState,
-        _history: &mut AppHistory,
     ) -> (ScreenEventResponse, Option<AppRoute>) {
         let currently_used_algolia_part = state.get_currently_used_algolia_part();
 

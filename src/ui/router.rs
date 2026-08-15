@@ -2,7 +2,10 @@ use std::fmt;
 
 use crate::{
     api::client::HnStoriesSections,
-    app::state::AppState,
+    app::{
+        history::{self, AppHistory},
+        state::AppState,
+    },
     config::AppConfiguration,
     ui::screens::{
         help::HelpScreen, home::HomeScreen, nested_comments::NestedCommentsScreen,
@@ -103,6 +106,11 @@ impl AppRouter {
         self.navigation_stack
             .last()
             .expect("AppRouter has a current route")
+    }
+
+    /// Routes from the currently displayed screen down to the root, in unmount order.
+    pub fn navigation_stack_unmount_order(&self) -> impl Iterator<Item = &AppRoute> {
+        self.navigation_stack.iter().rev()
     }
 
     /// Push a new navigation route state.

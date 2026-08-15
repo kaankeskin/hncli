@@ -2,7 +2,7 @@ use ratatui::layout::{Constraint, Direction, Layout, Rect};
 
 use crate::{
     api::types::HnItemIdScalar,
-    app::{history::AppHistory, state::AppState},
+    app::state::AppState,
     config::AppConfiguration,
     ui::{
         components::{
@@ -67,7 +67,6 @@ impl Screen for NestedCommentsScreen {
         inputs: &InputsController,
         router: &mut AppRouter,
         state: &mut AppState,
-        _history: &mut AppHistory,
     ) -> (ScreenEventResponse, Option<AppRoute>) {
         // FIXME: restored comment ID does not seem to work right now
         if inputs.is_active(&ApplicationAction::Back) {

@@ -1,7 +1,7 @@
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 
 use crate::{
-    app::{history::AppHistory, state::AppState},
+    app::state::AppState,
     ui::{
         components::help::HELP_ID,
         handlers::{ApplicationAction, InputsController},
@@ -28,7 +28,6 @@ impl Screen for HelpScreen {
         inputs: &InputsController,
         router: &mut AppRouter,
         _state: &mut AppState,
-        _history: &mut AppHistory,
     ) -> (ScreenEventResponse, Option<AppRoute>) {
         if inputs.is_active(&ApplicationAction::Back) {
             router.pop_navigation_stack();

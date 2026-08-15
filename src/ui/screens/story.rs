@@ -64,7 +64,18 @@ impl Screen for StoryDetailsScreen {
         }
     }
 
-    fn before_unmount(&mut self, state: &mut AppState) {
+    fn before_unmount(&mut self, state: &mut AppState, history: &mut AppHistory) {
+        // navigation history handling, before any state reset
+        if let Some(focused_top_level_comment_id) =
+            state.get_currently_viewed_item_comments_chain().first()
+        {
+            history.persist_top_level_comment_id_for_story(
+                self.item.id,
+                *focused_top_level_comment_id,
+            );
+            history.persist();
+        }
+
         state.reset_currently_viewed_item_comments_chain();
         state.set_currently_viewed_item_has_switched(true);
     }
@@ -74,21 +85,8 @@ impl Screen for StoryDetailsScreen {
         inputs: &InputsController,
         router: &mut AppRouter,
         state: &mut AppState,
-        history: &mut AppHistory,
     ) -> (ScreenEventResponse, Option<AppRoute>) {
         if inputs.is_active(&ApplicationAction::Back) {
-            // navigation history handling
-            // TODO: should also persist when quitting the app
-            if let Some(focused_top_level_comment_id) =
-                state.get_currently_viewed_item_comments_chain().first()
-            {
-                history.persist_top_level_comment_id_for_story(
-                    self.item.id,
-                    *focused_top_level_comment_id,
-                );
-                history.persist();
-            }
-
             router.pop_navigation_stack();
             (
                 ScreenEventResponse::Caught,

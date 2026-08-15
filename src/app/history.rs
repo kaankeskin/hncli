@@ -378,6 +378,8 @@ impl AppHistory {
 
 #[cfg(test)]
 mod tests {
+    use std::fs::remove_dir_all;
+
     use chrono::Duration;
 
     use super::*;
@@ -391,6 +393,32 @@ mod tests {
             history.synchronized.apply(command);
         }
         history
+    }
+
+    /// Filepath of a real, test-owned history file, in a "/tmp" directory of its own.
+    ///
+    /// The directory is erased if a previous run left it behind.
+    fn temporary_history_filepath(test_name: &str) -> PathBuf {
+        let history_directory = PathBuf::from("/tmp").join(format!("hncli-history-{test_name}"));
+        if history_directory.exists() {
+            remove_dir_all(&history_directory)
+                .expect("the temporary history directory can be erased");
+        }
+        history_directory.join("history.json")
+    }
+
+    /// The stored navigation state IDs, sorted to be compared without any ordering assumption.
+    fn sorted_stored_ids<T: SynchronizedHistoryItem>(
+        storage: &Option<SynchronizedHistoryItemStorage<T>>,
+    ) -> Vec<HnItemIdScalar> {
+        let mut stored_ids: Vec<_> = storage
+            .as_ref()
+            .expect("the storage must be initialized")
+            .values()
+            .map(|entry| entry.get_value())
+            .collect();
+        stored_ids.sort_unstable();
+        stored_ids
     }
 
     #[test]
@@ -498,5 +526,193 @@ mod tests {
         assert!(!limited_storage.contains_key(&123));
         assert!(limited_storage.contains_key(&456));
         assert!(limited_storage.contains_key(&789));
+    }
+
+    #[test]
+    fn test_resume_item_upsert_refreshes_the_stored_entry() {
+        let mut history = applied_history(&[
+            HistoryPersistCommand::ResumeAdd { item_id: 1 },
+            HistoryPersistCommand::ResumeAdd { item_id: 2 },
+        ]);
+
+        // backdate both entries to get a deterministic ordering
+        for (item_id, minutes_ago) in [(1, 10), (2, 5)] {
+            history
+                .synchronized
+                .latest_resume_items_map
+                .get_or_insert_default()
+                .entry(item_id)
+                .and_modify(|entry| entry.datetime = Utc::now() - Duration::minutes(minutes_ago));
+        }
+        assert_eq!(
+            history
+                .restored_resume_items()
+                .iter()
+                .map(|entry| entry.get_value())
+                .collect::<Vec<_>>(),
+            vec![2, 1]
+        );
+
+        // visiting item 1 again refreshes its entry instead of duplicating it
+        history
+            .synchronized
+            .apply(&HistoryPersistCommand::ResumeAdd { item_id: 1 });
+
+        let resume_items = history.restored_resume_items();
+        assert_eq!(resume_items.len(), 2);
+        assert_eq!(
+            resume_items
+                .iter()
+                .map(|entry| entry.get_value())
+                .collect::<Vec<_>>(),
+            vec![1, 2]
+        );
+    }
+
+    #[test]
+    fn test_history_json_file_write_then_read_round_trip() {
+        let history_filepath = temporary_history_filepath("round-trip");
+        let history = applied_history(&[
+            HistoryPersistCommand::ResumeAdd { item_id: 1 },
+            HistoryPersistCommand::ResumeAdd { item_id: 2 },
+            HistoryPersistCommand::TopLevelCommentAdd {
+                story_id: 1,
+                top_level_comment_id: 123,
+            },
+        ]);
+
+        // the parent directory does not exist yet, and must be created on the fly
+        history
+            .synchronized
+            .write_to_json_file(&history_filepath)
+            .expect("the history file can be written");
+        assert!(history_filepath.exists());
+
+        let restored = AppHistory {
+            synchronized: SynchronizedHistory::read_from_json_file(history_filepath.clone()),
+        };
+
+        assert_eq!(
+            sorted_stored_ids(&restored.synchronized.latest_resume_items_map),
+            vec![1, 2]
+        );
+        assert_eq!(
+            restored.restored_top_level_comment_id_for_story(1),
+            Some(123)
+        );
+        assert_eq!(restored.restored_top_level_comment_id_for_story(2), None);
+
+        assert_eq!(
+            history.restored_resume_items()[0]
+                .get_timestamp()
+                .timestamp(),
+            restored.restored_resume_items()[0]
+                .get_timestamp()
+                .timestamp()
+        );
+
+        remove_dir_all(history_filepath.parent().unwrap())
+            .expect("the temporary history directory can be erased");
+    }
+
+    #[test]
+    fn test_history_json_file_reading_when_missing() {
+        let history_filepath = temporary_history_filepath("missing");
+
+        let history = SynchronizedHistory::read_from_json_file(history_filepath);
+
+        assert_eq!(
+            sorted_stored_ids(&history.latest_resume_items_map),
+            Vec::<HnItemIdScalar>::new()
+        );
+        assert_eq!(
+            sorted_stored_ids(&history.latest_top_level_comments_per_item_map),
+            Vec::<HnItemIdScalar>::new()
+        );
+    }
+
+    #[test]
+    fn test_history_json_file_reading_when_corrupted() {
+        let history_filepath = temporary_history_filepath("corrupted");
+        create_dir_all(history_filepath.parent().unwrap())
+            .expect("the temporary history directory can be created");
+        write(&history_filepath, "{ definitely not JSON ...")
+            .expect("the corrupted history file can be written");
+
+        // a corrupted history must not prevent the application from starting
+        let history = SynchronizedHistory::read_from_json_file(history_filepath.clone());
+
+        assert_eq!(
+            sorted_stored_ids(&history.latest_resume_items_map),
+            Vec::<HnItemIdScalar>::new()
+        );
+
+        remove_dir_all(history_filepath.parent().unwrap())
+            .expect("the temporary history directory can be erased");
+    }
+
+    #[test]
+    fn test_history_json_file_reading_without_the_resume_items_storage() {
+        let history_filepath = temporary_history_filepath("no-resume-items");
+        create_dir_all(history_filepath.parent().unwrap())
+            .expect("the temporary history directory can be created");
+        // history file written by a version of hncli predating the "resume Item reading" tab
+        write(
+            &history_filepath,
+            r#"{"latest_top_level_comments_per_item_map":{"1":{"datetime":1750000000,"top_level_comment_id":123}}}"#,
+        )
+        .expect("the legacy history file can be written");
+
+        let history = AppHistory {
+            synchronized: SynchronizedHistory::read_from_json_file(history_filepath.clone()),
+        };
+
+        assert!(history.synchronized.latest_resume_items_map.is_none());
+        assert!(history.restored_resume_items().is_empty());
+        assert_eq!(
+            history.restored_top_level_comment_id_for_story(1),
+            Some(123)
+        );
+
+        remove_dir_all(history_filepath.parent().unwrap())
+            .expect("the temporary history directory can be erased");
+    }
+
+    #[test]
+    fn test_history_json_file_writing_enforces_the_entries_limit() {
+        let history_filepath = temporary_history_filepath("entries-limit");
+        let max_entries = ResumeItemHistoryData::max_entries();
+        let mut history = applied_history(&[]);
+        let resume_items_map = history
+            .synchronized
+            .latest_resume_items_map
+            .get_or_insert_default();
+        // the older the Item, the higher its ID here
+        for item_id in 0..(max_entries + 20) as HnItemIdScalar {
+            resume_items_map.insert(
+                item_id,
+                ResumeItemHistoryData {
+                    datetime: Utc::now() - Duration::minutes(item_id.into()),
+                    item_id,
+                },
+            );
+        }
+
+        history
+            .synchronized
+            .write_to_json_file(&history_filepath)
+            .expect("the history file can be written");
+        let restored = SynchronizedHistory::read_from_json_file(history_filepath.clone());
+
+        let restored_items_ids = sorted_stored_ids(&restored.latest_resume_items_map);
+        assert_eq!(restored_items_ids.len(), max_entries);
+        // only the most recently visited Items are kept
+        assert_eq!(
+            restored_items_ids,
+            (0..max_entries as HnItemIdScalar).collect::<Vec<_>>()
+        );
+
+        remove_dir_all(history_filepath.parent().unwrap())
+            .expect("the temporary history directory can be erased");
     }
 }

@@ -179,15 +179,13 @@ impl App {
         }
 
         // screen event handling
-        let (response, new_route) = self.current_screen.handle_inputs(
-            &self.inputs,
-            &mut self.router,
-            &mut self.state,
-            &mut self.history,
-        );
+        let (response, new_route) =
+            self.current_screen
+                .handle_inputs(&self.inputs, &mut self.router, &mut self.state);
         if let Some(route) = new_route {
             // screen unmount hook
-            self.current_screen.before_unmount(&mut self.state);
+            self.current_screen
+                .before_unmount(&mut self.state, &mut self.history);
             // update the current screen if the route changed
             self.current_screen = AppRouter::build_screen_from_route(route);
             self.current_screen
@@ -225,5 +223,24 @@ impl App {
     /// Get, if any, the rendering `Rect` target for the given component.
     pub fn get_component_rendering_rect(&self, id: &UiComponentId) -> Option<&Rect> {
         self.layout_components.get(id)
+    }
+
+    /// Unmount every screen of the navigation stack, from the current one down to the root.
+    pub fn before_quit(&mut self) {
+        self.current_screen
+            .before_unmount(&mut self.state, &mut self.history);
+        // parent screens are not instantiated: rebuild them from their route,
+        // which fully determines their state
+        let parent_routes: Vec<AppRoute> = self
+            .router
+            .navigation_stack_unmount_order()
+            .skip(1) // the current screen was just unmounted
+            .cloned()
+            .collect();
+        for route in parent_routes {
+            AppRouter::build_screen_from_route(route)
+                .before_unmount(&mut self.state, &mut self.history);
+        }
+        self.history.persist(&[]);
     }
 }

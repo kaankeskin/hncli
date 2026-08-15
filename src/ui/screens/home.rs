@@ -2,7 +2,7 @@ use ratatui::layout::Rect;
 
 use crate::{
     api::client::HnStoriesSections,
-    app::{history::AppHistory, state::AppState},
+    app::state::AppState,
     config::AppConfiguration,
     ui::{
         components::{navigation::NAVIGATION_ID, options::OPTIONS_ID, stories::STORIES_PANEL_ID},
@@ -65,7 +65,6 @@ impl Screen for HomeScreen {
         _inputs: &InputsController,
         _router: &mut AppRouter,
         _state: &mut AppState,
-        _history: &mut AppHistory,
     ) -> (ScreenEventResponse, Option<AppRoute>) {
         (ScreenEventResponse::PassThrough, None)
     }

@@ -31,7 +31,7 @@ impl SettingsScreen {
 }
 
 impl Screen for SettingsScreen {
-    fn before_unmount(&mut self, state: &mut AppState) {
+    fn before_unmount(&mut self, state: &mut AppState, _history: &mut AppHistory) {
         state.set_flash_message(FlashMessage::new(
             "Settings successfully saved.",
             FlashMessageType::Info,
@@ -44,7 +44,6 @@ impl Screen for SettingsScreen {
         inputs: &InputsController,
         router: &mut AppRouter,
         _state: &mut AppState,
-        _history: &mut AppHistory,
     ) -> (ScreenEventResponse, Option<AppRoute>) {
         if inputs.is_active(&ApplicationAction::Back) {
             router.pop_navigation_stack();

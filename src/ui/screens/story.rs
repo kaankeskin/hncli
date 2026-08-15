@@ -1,7 +1,10 @@
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 
 use crate::{
-    app::{history::AppHistory, state::AppState},
+    app::{
+        history::{AppHistory, HistoryPersistCommand},
+        state::AppState,
+    },
     config::AppConfiguration,
     ui::{
         components::{item_comments::ITEM_TOP_LEVEL_COMMENTS_ID, item_details::ITEM_DETAILS_ID},
@@ -64,7 +67,29 @@ impl Screen for StoryDetailsScreen {
         }
     }
 
-    fn before_unmount(&mut self, state: &mut AppState) {
+    fn before_unmount(&mut self, state: &mut AppState, history: &mut AppHistory) {
+        let mut history_commands: Vec<HistoryPersistCommand> = vec![];
+        // navigation history handling, before any state reset
+        if let Some(focused_top_level_comment_id) =
+            state.get_currently_viewed_item_comments_chain().first()
+        {
+            history_commands.push(HistoryPersistCommand::TopLevelCommentAdd {
+                story_id: self.item.id,
+                top_level_comment_id: *focused_top_level_comment_id,
+            });
+        }
+        // restore item history handling
+        if self.item.can_resume()
+            && let Some(title) = &self.item.title
+        {
+            history_commands.push(HistoryPersistCommand::ResumeAdd {
+                item_id: self.item.id,
+                label: title.clone(),
+            });
+        }
+        // history persist to file
+        history.persist(&history_commands);
+
         state.reset_currently_viewed_item_comments_chain();
         state.set_currently_viewed_item_has_switched(true);
     }
@@ -74,21 +99,8 @@ impl Screen for StoryDetailsScreen {
         inputs: &InputsController,
         router: &mut AppRouter,
         state: &mut AppState,
-        history: &mut AppHistory,
     ) -> (ScreenEventResponse, Option<AppRoute>) {
         if inputs.is_active(&ApplicationAction::Back) {
-            // navigation history handling
-            // TODO: should also persist when quitting the app
-            if let Some(focused_top_level_comment_id) =
-                state.get_currently_viewed_item_comments_chain().first()
-            {
-                history.persist_top_level_comment_id_for_story(
-                    self.item.id,
-                    *focused_top_level_comment_id,
-                );
-                history.persist();
-            }
-
             router.pop_navigation_stack();
             (
                 ScreenEventResponse::Caught,

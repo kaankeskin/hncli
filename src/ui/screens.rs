@@ -17,6 +17,7 @@ pub mod help;
 pub mod help_search;
 pub mod home;
 pub mod nested_comments;
+pub mod resume;
 pub mod search;
 pub mod search_help;
 pub mod settings;
@@ -42,7 +43,7 @@ pub trait Screen: Debug + Send + Sync {
     fn before_mount(&mut self, _state: &mut AppState, _config: &AppConfiguration) {}
 
     /// Called before unmounting the screen.
-    fn before_unmount(&mut self, _state: &mut AppState) {}
+    fn before_unmount(&mut self, _state: &mut AppState, _history: &mut AppHistory) {}
 
     /// Handle an incoming key event, at the application level.
     ///
@@ -52,7 +53,6 @@ pub trait Screen: Debug + Send + Sync {
         inputs: &InputsController,
         router: &mut AppRouter,
         state: &mut AppState,
-        history: &mut AppHistory,
     ) -> (ScreenEventResponse, Option<AppRoute>);
 
     /// Compute the components' layout according to current terminal frame size.

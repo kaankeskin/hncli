@@ -148,7 +148,6 @@ impl UiComponent for StoriesPanel {
         Ok(())
     }
 
-    // TODO: when entering then leaving item details, cannot re-enter without moving in the items list
     async fn handle_inputs(&mut self, ctx: &mut AppContext) -> Result<bool> {
         if ctx.get_state().get_main_stories_loading() {
             return Ok(false);
@@ -246,10 +245,16 @@ impl UiComponent for StoriesPanel {
                     return;
                 }
                 let meta_posted_since = item.posted_since.clone();
-                let meta = if matches!(ctx.get_state().get_main_stories_section(), HnStoriesSections::Jobs) {
+                let meta = if matches!(
+                    ctx.get_state().get_main_stories_section(),
+                    HnStoriesSections::Jobs
+                ) {
                     meta_posted_since
                 } else {
-                    format!("{meta_posted_since}, {} score, {} comments", item.score, item.descendants)
+                    format!(
+                        "{meta_posted_since}, {} score, {} comments",
+                        item.score, item.descendants
+                    )
                 };
                 let meta_width = meta.width();
                 buf.set_stringn(

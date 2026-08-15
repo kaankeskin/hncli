@@ -25,6 +25,7 @@ use crate::{
     app::App,
     config::AppConfiguration,
     errors::{HnCliError, Result},
+    ui::components::resume_list::ResumeList,
 };
 
 use self::{
@@ -149,6 +150,7 @@ impl UserInterface {
         self.register_component(ItemSummary::default());
         self.register_component(ItemTopLevelComments::default());
         self.register_component(CommentItemNestedComments::default());
+        self.register_component(ResumeList::default());
         self.register_component(AlgoliaTags::default());
         self.register_component(AlgoliaInput::default());
         self.register_component(AlgoliaList::default());
@@ -274,6 +276,7 @@ impl UserInterface {
                     let inputs = app_context.get_inputs();
                     // TODO: errors on quit should be logged but not panic
                     if inputs.is_active(&ApplicationAction::Quit) {
+                        self.app.before_quit();
                         disable_raw_mode().map_err(|_| {
                             HnCliError::CrosstermError("disable_raw_mode error".into())
                         })?;
@@ -285,6 +288,7 @@ impl UserInterface {
                     if inputs.is_active(&ApplicationAction::QuitShortcut)
                         && self.can_quit_via_shortcut()
                     {
+                        self.app.before_quit();
                         disable_raw_mode().map_err(|_| {
                             HnCliError::CrosstermError("crossterm disable_raw_mode error".into())
                         })?;

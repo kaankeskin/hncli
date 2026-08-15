@@ -1,7 +1,7 @@
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 
 use crate::{
-    app::{history::AppHistory, state::AppState},
+    app::state::AppState,
     ui::{
         components::search::algolia_help::ALGOLIA_HELP_ID,
         handlers::{ApplicationAction, InputsController},
@@ -26,7 +26,6 @@ impl Screen for SearchHelpScreen {
         inputs: &InputsController,
         router: &mut AppRouter,
         _state: &mut AppState,
-        _history: &mut AppHistory,
     ) -> (ScreenEventResponse, Option<AppRoute>) {
         if inputs.is_active(&ApplicationAction::Back)
             || inputs.is_active(&ApplicationAction::ToggleHelp)

@@ -1,10 +1,13 @@
+use ratatui::layout::Rect;
+
 use crate::{
     app::state::AppState,
     ui::{
+        components::{navigation::NAVIGATION_ID, resume_list::RESUME_LIST_ID},
         handlers::InputsController,
         router::{AppRoute, AppRouter},
-        screens::{Screen, ScreenEventResponse},
-        utils::breakpoints::Breakpoints,
+        screens::{Screen, ScreenComponentsRegistry, ScreenEventResponse},
+        utils::breakpoints::{Breakpoints, BreakpointsDirection},
     },
 };
 
@@ -47,7 +50,7 @@ impl Screen for ResumeScreen {
     ) -> (ScreenEventResponse, Option<AppRoute>) {
         (ScreenEventResponse::PassThrough, None)
     }
-    
+
     fn compute_layout(
         &self,
         frame_size: Rect,
@@ -56,7 +59,7 @@ impl Screen for ResumeScreen {
     ) {
         self.breakpoints.apply(
             components_registry,
-            &[NAVIGATION_ID, STORIES_PANEL_ID, OPTIONS_ID],
+            &[NAVIGATION_ID, RESUME_LIST_ID],
             frame_size,
             BreakpointsDirection::Vertical,
         );

@@ -2,15 +2,12 @@ use std::fmt;
 
 use crate::{
     api::client::HnStoriesSections,
-    app::{
-        history::{self, AppHistory},
-        state::AppState,
-    },
+    app::state::AppState,
     config::AppConfiguration,
     ui::screens::{
         help::HelpScreen, home::HomeScreen, nested_comments::NestedCommentsScreen,
-        search_help::SearchHelpScreen, settings::SettingsScreen, story::StoryDetailsScreen,
-        user::UserDetailsScreen,
+        resume::ResumeScreen, search_help::SearchHelpScreen, settings::SettingsScreen,
+        story::StoryDetailsScreen, user::UserDetailsScreen,
     },
 };
 
@@ -33,6 +30,8 @@ pub enum AppRoute {
     SearchHelp,
     /// Settings screen.
     Settings,
+    /// "Resume Item reading" screen.
+    Resume,
     /// Help screen.
     Help,
 }
@@ -127,6 +126,7 @@ impl AppRouter {
         use AppRoute::*;
         match route {
             Help => Box::new(HelpScreen::new()),
+            Resume => Box::new(ResumeScreen::new()),
             Settings => Box::new(SettingsScreen::new()),
             SearchHelp => Box::new(SearchHelpScreen::new()),
             Home(section) => Box::new(HomeScreen::new(section)),

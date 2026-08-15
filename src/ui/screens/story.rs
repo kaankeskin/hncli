@@ -68,15 +68,27 @@ impl Screen for StoryDetailsScreen {
     }
 
     fn before_unmount(&mut self, state: &mut AppState, history: &mut AppHistory) {
+        let mut history_commands: Vec<HistoryPersistCommand> = vec![];
         // navigation history handling, before any state reset
         if let Some(focused_top_level_comment_id) =
             state.get_currently_viewed_item_comments_chain().first()
         {
-            history.persist(&[HistoryPersistCommand::TopLevelCommentAdd {
+            history_commands.push(HistoryPersistCommand::TopLevelCommentAdd {
                 story_id: self.item.id,
                 top_level_comment_id: *focused_top_level_comment_id,
-            }]);
+            });
         }
+        // restore item history handling
+        if self.item.can_resume()
+            && let Some(title) = &self.item.title
+        {
+            history_commands.push(HistoryPersistCommand::ResumeAdd {
+                item_id: self.item.id,
+                label: title.clone(),
+            });
+        }
+        // history persist to file
+        history.persist(&history_commands);
 
         state.reset_currently_viewed_item_comments_chain();
         state.set_currently_viewed_item_has_switched(true);

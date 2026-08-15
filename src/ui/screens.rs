@@ -17,6 +17,7 @@ pub mod help;
 pub mod help_search;
 pub mod home;
 pub mod nested_comments;
+pub mod resume;
 pub mod search;
 pub mod search_help;
 pub mod settings;

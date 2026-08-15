@@ -25,6 +25,7 @@ use crate::{
     app::App,
     config::AppConfiguration,
     errors::{HnCliError, Result},
+    ui::components::resume_list::ResumeList,
 };
 
 use self::{
@@ -149,6 +150,7 @@ impl UserInterface {
         self.register_component(ItemSummary::default());
         self.register_component(ItemTopLevelComments::default());
         self.register_component(CommentItemNestedComments::default());
+        self.register_component(ResumeList::default());
         self.register_component(AlgoliaTags::default());
         self.register_component(AlgoliaInput::default());
         self.register_component(AlgoliaList::default());

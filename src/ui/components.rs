@@ -6,6 +6,7 @@ pub mod item_details;
 pub mod item_summary;
 pub mod navigation;
 pub mod options;
+pub mod resume_list;
 pub mod search;
 pub mod settings;
 pub mod stories;

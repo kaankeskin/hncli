@@ -1,5 +1,5 @@
 use std::{
-    collections::HashMap,
+    collections::{HashMap, hash_map::Entry},
     fs::{create_dir_all, read_to_string, write},
     path::{Path, PathBuf},
 };
@@ -18,6 +18,8 @@ use crate::{
 pub enum HistoryPersistCommand {
     ResumeAdd {
         item_id: HnItemIdScalar,
+        /// Human-readable title of the Item, displayed in the "resume Item reading" tab.
+        label: String,
     },
     ResumeRemove {
         item_id: HnItemIdScalar,
@@ -30,16 +32,19 @@ pub enum HistoryPersistCommand {
 
 /// A piece of navigation state that can be stored in, and restored from, the history.
 pub trait SynchronizedHistoryItem: Clone {
+    /// Data stored alongside the navigation state ID, if any (`()` when there is none).
+    type Metadata;
+
     /// Maximum number of entries that will be kept in the history file.
     fn max_entries() -> usize;
     /// Create an entry saving the given navigation state, stamped with the current datetime.
-    fn created(id: HnItemIdScalar) -> Self;
+    fn created(id: HnItemIdScalar, metadata: Self::Metadata) -> Self;
     /// The datetime at which this `SynchronizedHistoryItem` was first inserted or last updated.
     fn get_timestamp(&self) -> &DateTime<Utc>;
     /// Get the stored ID corresponding to the saved navigation state.
     fn get_value(&self) -> HnItemIdScalar;
     /// Update the stored ID corresponding to the saved navigation state.
-    fn set_value(&mut self, id: HnItemIdScalar);
+    fn set_value(&mut self, id: HnItemIdScalar, metadata: Self::Metadata);
 }
 
 /// Saves the "resume Item reading" navigation state.
@@ -47,16 +52,29 @@ pub trait SynchronizedHistoryItem: Clone {
 pub struct ResumeItemHistoryData {
     #[serde(with = "ts_seconds")]
     datetime: DateTime<Utc>,
+    /// Human-readable title of the Item, so that the "resume Item reading" tab
+    /// can be displayed without fetching every stored Item again.
+    label: String,
     item_id: HnItemIdScalar,
 }
 
+impl ResumeItemHistoryData {
+    /// Get the stored, human-readable title of the Item.
+    pub fn get_label(&self) -> &str {
+        &self.label
+    }
+}
+
 impl SynchronizedHistoryItem for ResumeItemHistoryData {
+    type Metadata = String;
+
     fn max_entries() -> usize {
         100
     }
-    fn created(id: HnItemIdScalar) -> Self {
+    fn created(id: HnItemIdScalar, metadata: Self::Metadata) -> Self {
         Self {
             datetime: Utc::now(),
+            label: metadata,
             item_id: id,
         }
     }
@@ -66,8 +84,9 @@ impl SynchronizedHistoryItem for ResumeItemHistoryData {
     fn get_value(&self) -> HnItemIdScalar {
         self.item_id
     }
-    fn set_value(&mut self, id: HnItemIdScalar) {
+    fn set_value(&mut self, id: HnItemIdScalar, metadata: Self::Metadata) {
         self.datetime = Utc::now();
+        self.label = metadata;
         self.item_id = id;
     }
 }
@@ -81,10 +100,12 @@ pub struct TopLevelCommentHistoryData {
 }
 
 impl SynchronizedHistoryItem for TopLevelCommentHistoryData {
+    type Metadata = ();
+
     fn max_entries() -> usize {
         500
     }
-    fn created(id: HnItemIdScalar) -> Self {
+    fn created(id: HnItemIdScalar, _metadata: Self::Metadata) -> Self {
         Self {
             datetime: Utc::now(),
             top_level_comment_id: id,
@@ -96,7 +117,7 @@ impl SynchronizedHistoryItem for TopLevelCommentHistoryData {
     fn get_value(&self) -> HnItemIdScalar {
         self.top_level_comment_id
     }
-    fn set_value(&mut self, id: HnItemIdScalar) {
+    fn set_value(&mut self, id: HnItemIdScalar, _metadata: Self::Metadata) {
         self.datetime = Utc::now();
         self.top_level_comment_id = id;
     }
@@ -136,10 +157,11 @@ impl SynchronizedHistory {
     fn apply(&mut self, command: &HistoryPersistCommand) {
         match command {
             // the "resume Item reading" storage is keyed by the very Item ID it stores
-            HistoryPersistCommand::ResumeAdd { item_id } => Self::upsert_entry(
+            HistoryPersistCommand::ResumeAdd { item_id, label } => Self::upsert_entry(
                 self.latest_resume_items_map.get_or_insert_default(),
                 *item_id,
                 *item_id,
+                label.clone(),
             ),
             HistoryPersistCommand::ResumeRemove { item_id } => {
                 if let Some(storage) = self.latest_resume_items_map.as_mut() {
@@ -154,21 +176,25 @@ impl SynchronizedHistory {
                     .get_or_insert_default(),
                 *story_id,
                 *top_level_comment_id,
+                (),
             ),
         }
     }
 
-    /// Store the given navigation state ID in the storage,
+    /// Store the given navigation state ID, and its associated metadata, in the storage,
     /// refreshing the already stored entry if there is one.
     fn upsert_entry<T: SynchronizedHistoryItem>(
         storage: &mut SynchronizedHistoryItemStorage<T>,
         key: HnItemIdScalar,
         value: HnItemIdScalar,
+        metadata: T::Metadata,
     ) {
-        storage
-            .entry(key)
-            .and_modify(|entry| entry.set_value(value))
-            .or_insert_with(|| T::created(value));
+        match storage.entry(key) {
+            Entry::Occupied(mut occupied) => occupied.get_mut().set_value(value, metadata),
+            Entry::Vacant(vacant) => {
+                vacant.insert(T::created(value, metadata));
+            }
+        }
     }
 
     /// Instantiate the synchronized history from the given JSON file.
@@ -407,6 +433,11 @@ mod tests {
         history_directory.join("history.json")
     }
 
+    /// A stable, human-readable label for the given Item, as stored by a `ResumeAdd` command.
+    fn resume_label(item_id: HnItemIdScalar) -> String {
+        format!("Story #{item_id}")
+    }
+
     /// The stored navigation state IDs, sorted to be compared without any ordering assumption.
     fn sorted_stored_ids<T: SynchronizedHistoryItem>(
         storage: &Option<SynchronizedHistoryItemStorage<T>>,
@@ -456,8 +487,14 @@ mod tests {
     #[test]
     fn test_simple_resume_items_scenario() {
         let history = applied_history(&[
-            HistoryPersistCommand::ResumeAdd { item_id: 1 },
-            HistoryPersistCommand::ResumeAdd { item_id: 2 },
+            HistoryPersistCommand::ResumeAdd {
+                item_id: 1,
+                label: resume_label(1),
+            },
+            HistoryPersistCommand::ResumeAdd {
+                item_id: 2,
+                label: resume_label(2),
+            },
             // finished reading item 1
             HistoryPersistCommand::ResumeRemove { item_id: 1 },
             // removing an Item never added to the resume list is a no-op
@@ -467,6 +504,11 @@ mod tests {
         let resume_items = history.restored_resume_items();
         assert_eq!(resume_items.len(), 1);
         assert_eq!(resume_items.first().map(|entry| entry.get_value()), Some(2));
+        // the label given at insertion is kept alongside the Item ID
+        assert_eq!(
+            resume_items.first().map(|entry| entry.get_label()),
+            Some(resume_label(2).as_str())
+        );
     }
 
     #[test]
@@ -481,6 +523,7 @@ mod tests {
                 item_id,
                 ResumeItemHistoryData {
                     datetime: Utc::now() - Duration::minutes(minutes_ago),
+                    label: resume_label(item_id),
                     item_id,
                 },
             );
@@ -493,6 +536,17 @@ mod tests {
             .map(|entry| entry.get_value())
             .collect();
         assert_eq!(restored_items_ids, vec![3, 1, 2]);
+
+        // each label stays attached to its own Item through the sorting
+        let restored_items_labels: Vec<_> = history
+            .restored_resume_items()
+            .iter()
+            .map(|entry| entry.get_label().to_string())
+            .collect();
+        assert_eq!(
+            restored_items_labels,
+            vec![resume_label(3), resume_label(1), resume_label(2)]
+        );
     }
 
     #[test]
@@ -531,8 +585,14 @@ mod tests {
     #[test]
     fn test_resume_item_upsert_refreshes_the_stored_entry() {
         let mut history = applied_history(&[
-            HistoryPersistCommand::ResumeAdd { item_id: 1 },
-            HistoryPersistCommand::ResumeAdd { item_id: 2 },
+            HistoryPersistCommand::ResumeAdd {
+                item_id: 1,
+                label: resume_label(1),
+            },
+            HistoryPersistCommand::ResumeAdd {
+                item_id: 2,
+                label: resume_label(2),
+            },
         ]);
 
         // backdate both entries to get a deterministic ordering
@@ -553,10 +613,14 @@ mod tests {
             vec![2, 1]
         );
 
-        // visiting item 1 again refreshes its entry instead of duplicating it
+        // visiting item 1 again refreshes its entry instead of duplicating it,
+        // and stores the label as seen during this latest visit
         history
             .synchronized
-            .apply(&HistoryPersistCommand::ResumeAdd { item_id: 1 });
+            .apply(&HistoryPersistCommand::ResumeAdd {
+                item_id: 1,
+                label: "Story #1 (renamed)".into(),
+            });
 
         let resume_items = history.restored_resume_items();
         assert_eq!(resume_items.len(), 2);
@@ -567,14 +631,27 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec![1, 2]
         );
+        assert_eq!(
+            resume_items
+                .iter()
+                .map(|entry| entry.get_label())
+                .collect::<Vec<_>>(),
+            vec!["Story #1 (renamed)", resume_label(2).as_str()]
+        );
     }
 
     #[test]
     fn test_history_json_file_write_then_read_round_trip() {
         let history_filepath = temporary_history_filepath("round-trip");
         let history = applied_history(&[
-            HistoryPersistCommand::ResumeAdd { item_id: 1 },
-            HistoryPersistCommand::ResumeAdd { item_id: 2 },
+            HistoryPersistCommand::ResumeAdd {
+                item_id: 1,
+                label: resume_label(1),
+            },
+            HistoryPersistCommand::ResumeAdd {
+                item_id: 2,
+                label: resume_label(2),
+            },
             HistoryPersistCommand::TopLevelCommentAdd {
                 story_id: 1,
                 top_level_comment_id: 123,
@@ -609,6 +686,21 @@ mod tests {
             restored.restored_resume_items()[0]
                 .get_timestamp()
                 .timestamp()
+        );
+
+        // the labels survive the JSON round trip, still attached to their own Item
+        let mut restored_labels: Vec<_> = restored
+            .synchronized
+            .latest_resume_items_map
+            .as_ref()
+            .expect("the resume items storage must be initialized")
+            .iter()
+            .map(|(item_id, entry)| (*item_id, entry.get_label().to_string()))
+            .collect();
+        restored_labels.sort_unstable();
+        assert_eq!(
+            restored_labels,
+            vec![(1, resume_label(1)), (2, resume_label(2))]
         );
 
         remove_dir_all(history_filepath.parent().unwrap())
@@ -693,6 +785,7 @@ mod tests {
                 item_id,
                 ResumeItemHistoryData {
                     datetime: Utc::now() - Duration::minutes(item_id.into()),
+                    label: resume_label(item_id),
                     item_id,
                 },
             );

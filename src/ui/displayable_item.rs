@@ -68,7 +68,15 @@ const MINUTES_PER_DAY: i64 = 24 * 60;
 
 impl DisplayableHackerNewsItem {
     pub fn get_hacker_news_link(&self) -> String {
-        format!("https://news.ycombinator.com/item?id={}", self.id)
+        Self::hacker_news_link_for(self.id)
+    }
+
+    pub fn hacker_news_link_for(id: HnItemIdScalar) -> String {
+        format!("https://news.ycombinator.com/item?id={id}")
+    }
+
+    pub fn can_resume(&self) -> bool {
+        !self.is_comment
     }
 
     pub fn formatted_posted_since(posted_at: &DateTime<Utc>) -> String {

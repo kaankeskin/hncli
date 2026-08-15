@@ -1,6 +1,8 @@
 //! The "resume Item reading" list.
 
 use async_trait::async_trait;
+use chrono::Utc;
+use log::info;
 use ratatui::{
     layout::{HorizontalAlignment, Rect},
     style::{Color, Style},
@@ -173,7 +175,7 @@ impl UiComponent for ResumeList {
 
         // Empty case
         if self.list_state.is_empty() {
-            let text = vec![Line::from(""), Line::from("No Item to resume reading.")];
+            let text = vec![Line::from(""), Line::from("No items in history.")];
             let paragraph = Paragraph::new(text)
                 .block(block)
                 .alignment(HorizontalAlignment::Center);
@@ -182,6 +184,7 @@ impl UiComponent for ResumeList {
         }
 
         // Custom List
+        let now = Utc::now();
         let custom_list_resume_items = CustomList::new(
             &mut self.list_state,
             |rect, buf, item, is_selected| {
@@ -194,8 +197,8 @@ impl UiComponent for ResumeList {
                 // title, as stored when the Item was last read
                 let (x, _) =
                     buf.set_stringn(rect.x, rect.y, item.get_label(), rect.width as usize, style);
-                // last read since
-                if x >= rect.width {
+                let last_read_minutes = (now - *item.get_timestamp()).num_minutes();
+                if x >= rect.width || last_read_minutes < 1 {
                     return;
                 }
                 let meta = format!(

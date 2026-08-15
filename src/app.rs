@@ -241,6 +241,6 @@ impl App {
             AppRouter::build_screen_from_route(route)
                 .before_unmount(&mut self.state, &mut self.history);
         }
-        self.history.persist();
+        self.history.persist(&[]);
     }
 }

@@ -1,7 +1,10 @@
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 
 use crate::{
-    app::{history::AppHistory, state::AppState},
+    app::{
+        history::{AppHistory, HistoryPersistCommand},
+        state::AppState,
+    },
     config::AppConfiguration,
     ui::{
         components::{item_comments::ITEM_TOP_LEVEL_COMMENTS_ID, item_details::ITEM_DETAILS_ID},
@@ -69,11 +72,10 @@ impl Screen for StoryDetailsScreen {
         if let Some(focused_top_level_comment_id) =
             state.get_currently_viewed_item_comments_chain().first()
         {
-            history.persist_top_level_comment_id_for_story(
-                self.item.id,
-                *focused_top_level_comment_id,
-            );
-            history.persist();
+            history.persist(&[HistoryPersistCommand::TopLevelCommentAdd {
+                story_id: self.item.id,
+                top_level_comment_id: *focused_top_level_comment_id,
+            }]);
         }
 
         state.reset_currently_viewed_item_comments_chain();

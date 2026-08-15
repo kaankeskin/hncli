@@ -1,7 +1,7 @@
 use std::{
     collections::HashMap,
     fs::{create_dir_all, read_to_string, write},
-    path::PathBuf,
+    path::{Path, PathBuf},
 };
 
 use chrono::{DateTime, Utc, serde::ts_seconds};
@@ -14,6 +14,65 @@ use crate::{
     errors::{HnCliError, Result},
 };
 
+#[derive(Debug)]
+pub enum HistoryPersistCommand {
+    ResumeAdd {
+        item_id: HnItemIdScalar,
+    },
+    ResumeRemove {
+        item_id: HnItemIdScalar,
+    },
+    TopLevelCommentAdd {
+        story_id: HnItemIdScalar,
+        top_level_comment_id: HnItemIdScalar,
+    },
+}
+
+/// A piece of navigation state that can be stored in, and restored from, the history.
+pub trait SynchronizedHistoryItem: Clone {
+    /// Maximum number of entries that will be kept in the history file.
+    fn max_entries() -> usize;
+    /// Create an entry saving the given navigation state, stamped with the current datetime.
+    fn created(id: HnItemIdScalar) -> Self;
+    /// The datetime at which this `SynchronizedHistoryItem` was first inserted or last updated.
+    fn get_timestamp(&self) -> &DateTime<Utc>;
+    /// Get the stored ID corresponding to the saved navigation state.
+    fn get_value(&self) -> HnItemIdScalar;
+    /// Update the stored ID corresponding to the saved navigation state.
+    fn set_value(&mut self, id: HnItemIdScalar);
+}
+
+/// Saves the "resume Item reading" navigation state.
+#[derive(Clone, Debug, PartialEq, PartialOrd, Serialize, Deserialize)]
+pub struct ResumeItemHistoryData {
+    #[serde(with = "ts_seconds")]
+    datetime: DateTime<Utc>,
+    item_id: HnItemIdScalar,
+}
+
+impl SynchronizedHistoryItem for ResumeItemHistoryData {
+    fn max_entries() -> usize {
+        100
+    }
+    fn created(id: HnItemIdScalar) -> Self {
+        Self {
+            datetime: Utc::now(),
+            item_id: id,
+        }
+    }
+    fn get_timestamp(&self) -> &DateTime<Utc> {
+        &self.datetime
+    }
+    fn get_value(&self) -> HnItemIdScalar {
+        self.item_id
+    }
+    fn set_value(&mut self, id: HnItemIdScalar) {
+        self.datetime = Utc::now();
+        self.item_id = id;
+    }
+}
+
+/// Saves the navigation state of a top-level comment for a given Item thread.
 #[derive(Clone, Debug, PartialEq, PartialOrd, Serialize, Deserialize)]
 pub struct TopLevelCommentHistoryData {
     #[serde(with = "ts_seconds")]
@@ -21,56 +80,95 @@ pub struct TopLevelCommentHistoryData {
     top_level_comment_id: HnItemIdScalar,
 }
 
-/// TODO: support more than top-level comments (would also need refactoring elsewhere)
-#[derive(Clone, Debug, PartialEq, PartialOrd, Serialize, Deserialize)]
-pub enum SynchronizedHistoryItem {
-    /// Saves the navigation state of a top-level comment for a given Item thread.
-    TopLevelComment(TopLevelCommentHistoryData),
-}
-
-impl SynchronizedHistoryItem {
-    /// The datetime at which this `SynchronizedHistoryItem` was first inserted or last updated.
+impl SynchronizedHistoryItem for TopLevelCommentHistoryData {
+    fn max_entries() -> usize {
+        500
+    }
+    fn created(id: HnItemIdScalar) -> Self {
+        Self {
+            datetime: Utc::now(),
+            top_level_comment_id: id,
+        }
+    }
     fn get_timestamp(&self) -> &DateTime<Utc> {
-        match self {
-            Self::TopLevelComment(data) => &data.datetime,
-        }
+        &self.datetime
     }
-
-    /// Get the stored ID corresponding to the saved navigation state.
     fn get_value(&self) -> HnItemIdScalar {
-        match self {
-            Self::TopLevelComment(data) => data.top_level_comment_id,
-        }
+        self.top_level_comment_id
     }
-
-    /// Update the stored ID corresponding to the saved navigation state.
     fn set_value(&mut self, id: HnItemIdScalar) {
-        match self {
-            Self::TopLevelComment(data) => {
-                data.datetime = Utc::now();
-                data.top_level_comment_id = id;
-            }
-        }
+        self.datetime = Utc::now();
+        self.top_level_comment_id = id;
     }
 }
 
-type SynchronizedHistoryItemStorage = HashMap<HnItemIdScalar, SynchronizedHistoryItem>;
+/// Storage for one kind of history entry, keyed by the related Hacker News item ID.
+type SynchronizedHistoryItemStorage<T> = HashMap<HnItemIdScalar, T>;
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct SynchronizedHistory {
+    /// Stores the information for the "resume Item reading" tab.
+    ///
+    /// When leaving an Item screen (eg. story or "Show HN")
+    latest_resume_items_map: Option<SynchronizedHistoryItemStorage<ResumeItemHistoryData>>,
     /// Stores the latest focused top-level comment for a given Hacker News item.
     ///
     /// Also keeps track of the insertion datetime to enforce hard limits on the history size.
-    latest_top_level_comments_per_item_map: SynchronizedHistoryItemStorage,
+    latest_top_level_comments_per_item_map:
+        Option<SynchronizedHistoryItemStorage<TopLevelCommentHistoryData>>,
 }
 
 impl SynchronizedHistory {
     fn empty() -> Self {
         Self {
-            latest_top_level_comments_per_item_map: SynchronizedHistoryItemStorage::with_capacity(
-                SYNCHRONIZED_HISTORY_ITEMS_LIMIT,
+            latest_resume_items_map: Some(SynchronizedHistoryItemStorage::with_capacity(
+                ResumeItemHistoryData::max_entries(),
+            )),
+            latest_top_level_comments_per_item_map: Some(
+                SynchronizedHistoryItemStorage::with_capacity(
+                    TopLevelCommentHistoryData::max_entries(),
+                ),
             ),
         }
+    }
+
+    /// Apply a history persist command to the in-memory history.
+    fn apply(&mut self, command: &HistoryPersistCommand) {
+        match command {
+            // the "resume Item reading" storage is keyed by the very Item ID it stores
+            HistoryPersistCommand::ResumeAdd { item_id } => Self::upsert_entry(
+                self.latest_resume_items_map.get_or_insert_default(),
+                *item_id,
+                *item_id,
+            ),
+            HistoryPersistCommand::ResumeRemove { item_id } => {
+                if let Some(storage) = self.latest_resume_items_map.as_mut() {
+                    storage.remove(item_id);
+                }
+            }
+            HistoryPersistCommand::TopLevelCommentAdd {
+                story_id,
+                top_level_comment_id,
+            } => Self::upsert_entry(
+                self.latest_top_level_comments_per_item_map
+                    .get_or_insert_default(),
+                *story_id,
+                *top_level_comment_id,
+            ),
+        }
+    }
+
+    /// Store the given navigation state ID in the storage,
+    /// refreshing the already stored entry if there is one.
+    fn upsert_entry<T: SynchronizedHistoryItem>(
+        storage: &mut SynchronizedHistoryItemStorage<T>,
+        key: HnItemIdScalar,
+        value: HnItemIdScalar,
+    ) {
+        storage
+            .entry(key)
+            .and_modify(|entry| entry.set_value(value))
+            .or_insert_with(|| T::created(value));
     }
 
     /// Instantiate the synchronized history from the given JSON file.
@@ -132,7 +230,8 @@ impl SynchronizedHistory {
     ///
     /// This method should be not be called at every app interaction possible,
     /// for instance not at every top-level focused comment change.
-    fn write_to_json_file(&self, history_filepath: PathBuf) -> Result<()> {
+    fn write_to_json_file<P: AsRef<Path>>(&self, history_filepath: P) -> Result<()> {
+        let history_filepath = history_filepath.as_ref();
         let history_directory = history_filepath.parent().expect(
             "SynchronizedHistory.write_to_json_file: history filepath parent folder can be read",
         );
@@ -144,11 +243,18 @@ impl SynchronizedHistory {
             ))
         })?;
 
-        let limited_latest_top_level_comments_per_item_map = Self::enforced_history_limit(
-            &self.latest_top_level_comments_per_item_map,
-            SYNCHRONIZED_HISTORY_ITEMS_LIMIT,
-        );
+        let limited_latest_resume_items_map =
+            self.latest_resume_items_map.as_ref().map(|storage| {
+                Self::enforced_history_limit(storage, ResumeItemHistoryData::max_entries())
+            });
+        let limited_latest_top_level_comments_per_item_map = self
+            .latest_top_level_comments_per_item_map
+            .as_ref()
+            .map(|storage| {
+                Self::enforced_history_limit(storage, TopLevelCommentHistoryData::max_entries())
+            });
         let limited_synchronized_history = Self {
+            latest_resume_items_map: limited_latest_resume_items_map,
             latest_top_level_comments_per_item_map: limited_latest_top_level_comments_per_item_map,
         };
 
@@ -156,7 +262,7 @@ impl SynchronizedHistory {
             HnCliError::HistorySynchronizationError(format!("cannot serialize history: {err}"))
         })?;
 
-        write(&history_filepath, history_raw).map_err(|err| {
+        write(history_filepath, history_raw).map_err(|err| {
             HnCliError::HistorySynchronizationError(format!(
                 "cannot save history file ({:?}): {}",
                 history_filepath.display(),
@@ -166,25 +272,28 @@ impl SynchronizedHistory {
     }
 
     /// Enforce an arbitrary items count limit on the stored navigation data.
-    fn enforced_history_limit(
-        storage: &SynchronizedHistoryItemStorage,
+    fn enforced_history_limit<T: SynchronizedHistoryItem>(
+        storage: &SynchronizedHistoryItemStorage<T>,
         limit: usize,
-    ) -> SynchronizedHistoryItemStorage {
+    ) -> SynchronizedHistoryItemStorage<T> {
+        Self::sorted_by_recency(storage)
+            .into_iter()
+            .take(limit)
+            .map(|(id, storage_item)| (*id, storage_item.clone()))
+            .collect()
+    }
+
+    /// Sort the stored navigation data, from the most recently updated entry to the oldest one.
+    fn sorted_by_recency<T: SynchronizedHistoryItem>(
+        storage: &SynchronizedHistoryItemStorage<T>,
+    ) -> Vec<(&HnItemIdScalar, &T)> {
         let mut storage_entries: Vec<_> = storage.iter().collect();
         storage_entries.sort_by(|(_id_a, item_a), (_id_b, item_b)| {
-            item_a.get_timestamp().partial_cmp(item_b.get_timestamp()).expect("SynchronizedHistory::enforced_history_limit must be able to compare two Utc timestamps.")
+            item_b.get_timestamp().cmp(item_a.get_timestamp())
         });
-        let mut limited_storage = SynchronizedHistoryItemStorage::with_capacity(limit);
-        for (id, storage_item) in storage_entries.iter().rev().take(limit) {
-            let limited_storage_item: SynchronizedHistoryItem = (*storage_item).clone();
-            limited_storage.insert(**id, limited_storage_item);
-        }
-        limited_storage
+        storage_entries
     }
 }
-
-/// Maximum number of entries that will be kept in the history file.
-pub const SYNCHRONIZED_HISTORY_ITEMS_LIMIT: usize = 500;
 
 /// Responsible for restoring navigation state in the application from previous sessions.
 #[derive(Debug)]
@@ -212,17 +321,21 @@ impl AppHistory {
         }
     }
 
-    /// Persist the history in OS-dependent JSON storage.
+    /// Applies the given commands to the history and persist it
+    /// in OS-dependent JSON storage.
     ///
     /// Should not be called too often for performance reasons.
-    pub fn persist(&self) {
+    pub fn persist(&mut self, commands: &[HistoryPersistCommand]) {
+        for command in commands {
+            self.synchronized.apply(command);
+        }
+
         match Self::get_history_file_path() {
-            Ok(history_filepath) => match self.synchronized.write_to_json_file(history_filepath) {
-                Ok(()) => (),
-                Err(why) => {
+            Ok(history_filepath) => {
+                if let Err(why) = self.synchronized.write_to_json_file(history_filepath) {
                     warn!("History.persist error: {why}");
                 }
-            },
+            }
             Err(why) => {
                 warn!(
                     "History: cannot retrieve OS filepath for history.json (writing history): {why}"
@@ -231,28 +344,18 @@ impl AppHistory {
         }
     }
 
-    pub fn persist_top_level_comment_id_for_story(
-        &mut self,
-        story_id: HnItemIdScalar,
-        top_level_comment_id: HnItemIdScalar,
-    ) {
-        if let Some(entry) = self
-            .synchronized
-            .latest_top_level_comments_per_item_map
-            .get_mut(&story_id)
-        {
-            entry.set_value(top_level_comment_id);
-        } else {
-            self.synchronized
-                .latest_top_level_comments_per_item_map
-                .insert(
-                    story_id,
-                    SynchronizedHistoryItem::TopLevelComment(TopLevelCommentHistoryData {
-                        top_level_comment_id,
-                        datetime: Utc::now(),
-                    }),
-                );
-        };
+    /// Get the information needed for the "resume Item reading" tab,
+    /// from the most recently visited Item to the oldest one.
+    pub fn restored_resume_items(&self) -> Vec<&ResumeItemHistoryData> {
+        self.synchronized
+            .latest_resume_items_map
+            .as_ref()
+            .map_or_else(Vec::new, |storage| {
+                SynchronizedHistory::sorted_by_recency(storage)
+                    .into_iter()
+                    .map(|(_item_id, resume_item)| resume_item)
+                    .collect()
+            })
     }
 
     pub fn restored_top_level_comment_id_for_story(
@@ -261,10 +364,12 @@ impl AppHistory {
     ) -> Option<HnItemIdScalar> {
         self.synchronized
             .latest_top_level_comments_per_item_map
+            .as_ref()?
             .get(&story_id)
             .map(|entry| entry.get_value())
     }
 
+    // TODO: add override possibility for integration tests
     fn get_history_file_path() -> Result<PathBuf> {
         let project_os_directory = get_project_os_directory()?;
         Ok(project_os_directory.join("history.json"))
@@ -277,20 +382,36 @@ mod tests {
 
     use super::*;
 
-    #[test]
-    fn test_simple_item_top_level_persist_comment_id_scenario() {
+    /// Apply the given commands to an in-memory history, without any persistence.
+    fn applied_history(commands: &[HistoryPersistCommand]) -> AppHistory {
         let mut history = AppHistory {
             synchronized: SynchronizedHistory::empty(),
         };
+        for command in commands {
+            history.synchronized.apply(command);
+        }
+        history
+    }
 
-        // viewed item 1 and left while focused on comment ID 123
-        history.persist_top_level_comment_id_for_story(1, 123);
-
-        // viewed item 2 and left while focused on comment ID 456
-        history.persist_top_level_comment_id_for_story(2, 456);
-
-        // viewed item 1 again, left while focused on comment ID 1230
-        history.persist_top_level_comment_id_for_story(1, 1230);
+    #[test]
+    fn test_simple_item_top_level_persist_comment_id_scenario() {
+        let history = applied_history(&[
+            // viewed item 1 and left while focused on comment ID 123
+            HistoryPersistCommand::TopLevelCommentAdd {
+                story_id: 1,
+                top_level_comment_id: 123,
+            },
+            // viewed item 2 and left while focused on comment ID 456
+            HistoryPersistCommand::TopLevelCommentAdd {
+                story_id: 2,
+                top_level_comment_id: 456,
+            },
+            // viewed item 1 again, left while focused on comment ID 1230
+            HistoryPersistCommand::TopLevelCommentAdd {
+                story_id: 1,
+                top_level_comment_id: 1230,
+            },
+        ]);
 
         // basic assertions
         assert_eq!(
@@ -305,28 +426,70 @@ mod tests {
     }
 
     #[test]
+    fn test_simple_resume_items_scenario() {
+        let history = applied_history(&[
+            HistoryPersistCommand::ResumeAdd { item_id: 1 },
+            HistoryPersistCommand::ResumeAdd { item_id: 2 },
+            // finished reading item 1
+            HistoryPersistCommand::ResumeRemove { item_id: 1 },
+            // removing an Item never added to the resume list is a no-op
+            HistoryPersistCommand::ResumeRemove { item_id: 3 },
+        ]);
+
+        let resume_items = history.restored_resume_items();
+        assert_eq!(resume_items.len(), 1);
+        assert_eq!(resume_items.first().map(|entry| entry.get_value()), Some(2));
+    }
+
+    #[test]
+    fn test_resume_items_restoring_order() {
+        let mut history = applied_history(&[]);
+        let resume_items_map = history
+            .synchronized
+            .latest_resume_items_map
+            .get_or_insert_default();
+        for (item_id, minutes_ago) in [(1, 5), (2, 37), (3, 1)] {
+            resume_items_map.insert(
+                item_id,
+                ResumeItemHistoryData {
+                    datetime: Utc::now() - Duration::minutes(minutes_ago),
+                    item_id,
+                },
+            );
+        }
+
+        // from the most recently visited Item to the oldest one
+        let restored_items_ids: Vec<_> = history
+            .restored_resume_items()
+            .iter()
+            .map(|entry| entry.get_value())
+            .collect();
+        assert_eq!(restored_items_ids, vec![3, 1, 2]);
+    }
+
+    #[test]
     fn test_history_storage_limit_enforcing() {
         let mut storage = SynchronizedHistoryItemStorage::new();
         storage.insert(
             456,
-            SynchronizedHistoryItem::TopLevelComment(TopLevelCommentHistoryData {
+            TopLevelCommentHistoryData {
                 datetime: Utc::now(),
                 top_level_comment_id: 4567,
-            }),
+            },
         );
         storage.insert(
             123,
-            SynchronizedHistoryItem::TopLevelComment(TopLevelCommentHistoryData {
+            TopLevelCommentHistoryData {
                 datetime: Utc::now() - Duration::minutes(3),
                 top_level_comment_id: 1231,
-            }),
+            },
         );
         storage.insert(
             789,
-            SynchronizedHistoryItem::TopLevelComment(TopLevelCommentHistoryData {
+            TopLevelCommentHistoryData {
                 datetime: Utc::now() + Duration::seconds(37),
                 top_level_comment_id: 7895,
-            }),
+            },
         );
 
         let limited_storage = SynchronizedHistory::enforced_history_limit(&storage, 2);

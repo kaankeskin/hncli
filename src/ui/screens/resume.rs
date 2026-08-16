@@ -36,7 +36,7 @@ impl ResumeScreen {
         Self {
             breakpoints: Breakpoints::new("resume_screen", &[20, 80])
                 .breakpoint(25, &[10, 90])
-                .breakpoint(45, &[5, 95]),
+                .breakpoint(45, &[8, 92]),
         }
     }
 }

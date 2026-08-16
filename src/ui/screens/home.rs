@@ -43,7 +43,7 @@ impl HomeScreen {
             section,
             breakpoints: Breakpoints::new("home_screen", &[20, 65, 15])
                 .breakpoint(25, &[10, 80, 10])
-                .breakpoint(45, &[5, 88, 7]),
+                .breakpoint(45, &[8, 85, 7]),
         }
     }
 }

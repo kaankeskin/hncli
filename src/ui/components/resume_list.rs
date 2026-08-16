@@ -15,7 +15,7 @@ use crate::{
     api::{HnClient, types::HnItemIdScalar},
     app::{
         AppContext,
-        history::{ResumeItemHistoryData, SynchronizedHistoryItem},
+        history::{HistoryPersistCommand, ResumeItemHistoryData, SynchronizedHistoryItem},
     },
     errors::Result,
     ui::{
@@ -39,7 +39,7 @@ impl ItemWithId<HnItemIdScalar> for ResumeItemHistoryData {
 
 #[derive(Debug)]
 pub struct ResumeList {
-    initialized: bool,
+    loaded: bool,
     list_cutoff: usize,
     /// The Item selected in the list, waiting to be fetched.
     ///
@@ -52,7 +52,7 @@ pub struct ResumeList {
 impl Default for ResumeList {
     fn default() -> Self {
         Self {
-            initialized: false,
+            loaded: false,
             list_cutoff: RESUME_SCREEN_MAX_DISPLAYED_ITEMS,
             pending_selected_item_id: None,
             list_state: CustomListState::with_items(vec![]),
@@ -69,7 +69,7 @@ impl UiComponent for ResumeList {
     }
 
     fn before_unmount(&mut self) {
-        self.initialized = false;
+        self.loaded = false;
         self.pending_selected_item_id = None;
     }
 
@@ -78,11 +78,11 @@ impl UiComponent for ResumeList {
         _elapsed_ticks: UiTickScalar,
         _ctx: &AppContext,
     ) -> Result<bool> {
-        Ok(!self.initialized || self.pending_selected_item_id.is_some())
+        Ok(!self.loaded || self.pending_selected_item_id.is_some())
     }
 
     async fn update(&mut self, client: &mut HnClient, ctx: &mut AppContext) -> Result<()> {
-        if !self.initialized {
+        if !self.loaded {
             let resume_items: Vec<_> = ctx
                 .get_history()
                 .restored_resume_items()
@@ -94,7 +94,7 @@ impl UiComponent for ResumeList {
             if !self.list_state.is_empty() && self.list_state.selected().is_none() {
                 self.list_state.select(Some(0));
             }
-            self.initialized = true;
+            self.loaded = true;
         }
 
         if let Some(item_id) = self.pending_selected_item_id.take() {
@@ -143,7 +143,14 @@ impl UiComponent for ResumeList {
             true
         } else if let Some(selected_index) = selected {
             let selected_item_id = self.list_state.get_items()[selected_index].get_id();
-            if inputs.is_active(&ApplicationAction::OpenHackerNewsLink)
+            if inputs.is_active(&ApplicationAction::ResumeClearEntry) {
+                ctx.get_history_mut()
+                    .persist(&[HistoryPersistCommand::ResumeRemove {
+                        item_id: selected_item_id,
+                    }]);
+                self.loaded = false;
+                true
+            } else if inputs.is_active(&ApplicationAction::OpenHackerNewsLink)
                 // the external URL of a stored Item, if any, is unknown until it is
                 // fetched: both link actions can only open its Hacker News page here
                 || inputs.is_active(&ApplicationAction::OpenExternalOrHackerNewsLink)

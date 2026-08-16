@@ -189,8 +189,8 @@ impl ContextualHelper {
 
     fn render_resume_page_help(&self, f: &mut RenderFrame, inside: Rect) {
         let widgets = vec![
-            HelpWidget::Text("⬆️  / i or ⬇️  / k to navigate".into()),
-            HelpWidget::KeyReminder('⬅', "go back".into(), Key::Escape),
+            HelpWidget::KeyReminder('c', "delete entry".into(), Key::Char('c')),
+            HelpWidget::KeyReminder('🎯', "go to item".into(), Key::Enter),
         ];
         Self::render_widgets(f, inside, &widgets);
     }

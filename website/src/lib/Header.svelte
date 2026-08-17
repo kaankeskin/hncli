@@ -14,7 +14,7 @@
       <h1 class="hidden">hncli</h1>
     </a>
   </nav>
-  <div class="flex items-center sm:pr-12 sm:justify-around pt-4 sm:pt-0 gap-6 md:gap-12">
+  <div class="flex flex-col sm:flex-row items-center sm:pr-12 sm:justify-around pt-4 sm:pt-0 gap-6 md:gap-12">
     <a href={resolve("/changelog")} class="text-4xl sm:text-3xl font-medium text-white"> Changelog </a>
     <ExternalLink
       href="https://www.newstackwhodis.com/blog/?tag=Rust"

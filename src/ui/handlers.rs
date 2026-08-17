@@ -117,6 +117,8 @@ pub enum ApplicationAction {
     ToggleFocusResults,
     // settings screen
     SettingsToggleControl,
+    // resume screen
+    ResumeClearEntry,
 }
 
 impl ApplicationAction {
@@ -169,6 +171,8 @@ impl ApplicationAction {
             ToggleFocusResults => inputs.key == Key::Enter,
             // settings screen
             SettingsToggleControl => inputs.key == Key::Tab,
+            // resume screen
+            ResumeClearEntry => inputs.key == Key::Char('c'),
         }
     }
 

@@ -57,6 +57,10 @@ impl<'a> AppContext<'a> {
         self.history
     }
 
+    pub fn get_history_mut(&mut self) -> &mut AppHistory {
+        self.history
+    }
+
     pub fn get_inputs(&self) -> &InputsController {
         self.inputs
     }

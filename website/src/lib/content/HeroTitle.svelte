@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { resolve } from "$app/paths";
+
   import ExternalLink from "$lib/ExternalLink.svelte";
 </script>
 
@@ -11,13 +13,19 @@
   <p class="mt-6 text-lg text-gray-600 font-medium">
     Convenient, fast, and will run well on most computers, even old ones.
   </p>
-  <p class="text-xl font-medium tracking-tight text-gray-700 mt-4">
+  <p class="flex flex-col text-xl font-medium tracking-tight text-gray-700 mt-4 gap-4">
     <ExternalLink
       extraClass="no-underline mt-4"
       href="https://www.newstackwhodis.com/blog/hncli-1-concept#an-hacker-news-terminal-ui-concept-and-road-to-release"
     >
       Concept, vision and UX</ExternalLink
     >
+    <a
+      href={resolve("/changelog")}
+      class="font-semibold transition-colors duration-400 ease-in-out text-hncli-dark-red hover:text-hncli-dark-red/60 underline"
+    >
+      Changelog
+    </a>
   </p>
 </section>
 
